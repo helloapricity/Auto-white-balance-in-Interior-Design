@@ -18,6 +18,8 @@ try:
 except ImportError:
   use_tb = False
 
+import wandb
+
 from src import dataset
 from torch.utils.data import DataLoader
 
@@ -73,7 +75,9 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
   val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True,
                           num_workers=6, pin_memory=True)
 
-
+  # Initialization of other components
+  wandb.watch(net, log="all")
+  
   if use_tb:  # if TensorBoard is used
     writer = SummaryWriter(log_dir='runs/' + model_name,
                            comment=f'LR_{lr}_BS_{batch_size}')
@@ -200,10 +204,17 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
             writer.add_images('Weight (5)',
                               torch.unsqueeze(vis_weights[:, 4, :, :], dim=1),
                               global_step)
-
+        
           writer.add_images('Result', result, global_step)
           writer.add_images('GT', gt_patch, global_step)
-
+        
+        wandb.log({
+                    "epoch": epoch + 1,
+                    "total_loss": py_loss,
+                    "rec_loss": py_rec_loss,
+                    "smoothness_loss": py_smoothness_loss
+                })
+        
         pbar.update(np.ceil(img.shape[0]))
 
         pbar.set_postfix(**{'Total loss (batch)': py_loss},
@@ -304,6 +315,8 @@ def validation(net, loader, writer, step):
   print(f'Validation loss (batch): {val_loss / len(loader)}')
   if writer is not None:
     writer.add_scalar('Validation Loss', val_loss / len(loader), step)
+
+  wandb.log({"validation_loss": val_loss / len(loader)})
 
   net.train()
 
@@ -415,6 +428,17 @@ if __name__ == '__main__':
 
   net.to(device=device)
 
+  wandb.init(project="wb-correction", config={
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "learning_rate": args.lr,
+        "patch_size": args.patch_size,
+        "optimizer": args.optimizer,
+        "smoothness_weight": args.smoothness_weight,
+        "shuffle_order": args.shuffle_order,
+        "wb_settings": args.wb_settings,
+        "model_name": args.model_name
+    })
 
   postfix = f'_p_{args.patch_size}'
 
@@ -458,3 +482,5 @@ if __name__ == '__main__':
       sys.exit(0)
     except SystemExit:
       os._exit(0)
+  
+  wandb.finish()
