@@ -19,6 +19,7 @@ except ImportError:
   use_tb = False
 
 import wandb
+wandb.login()
 
 from src import dataset
 from torch.utils.data import DataLoader
@@ -208,12 +209,41 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
           writer.add_images('Result', result, global_step)
           writer.add_images('GT', gt_patch, global_step)
         
-        wandb.log({
-                    "epoch": epoch + 1,
-                    "total_loss": py_loss,
-                    "rec_loss": py_rec_loss,
-                    "smoothness_loss": py_smoothness_loss
-                })
+        # Normalize weights for visualization
+        vis_weights = (weights - torch.min(weights)) / (
+                      torch.finfo(weights.dtype).eps + torch.max(weights) - torch.min(weights))
+
+        # Log scalar metrics
+        wandb.log({'Loss/train': py_loss, 'global_step': global_step})
+        wandb.log({'Rec Loss/train': py_rec_loss, 'global_step': global_step})
+        wandb.log({'Smoothness Loss/train': py_smoothness_loss, 'global_step': global_step})
+
+        # Define a helper function to log images
+        def log_images(tag, images, step):
+            for i, img in enumerate(images):
+                wandb.log({f'{tag} {i + 1}': [wandb.Image(img)], 'global_step': step})
+
+        # Log input images and weights
+        log_images('Input (1)', patch[:, 0:3, :, :], global_step)
+        log_images('Weight (1)', torch.unsqueeze(vis_weights[:, 0, :, :], dim=1), global_step)
+        log_images('Input (2)', patch[:, 3:6, :, :], global_step)
+        log_images('Weight (2)', torch.unsqueeze(vis_weights[:, 1, :, :], dim=1), global_step)
+        log_images('Input (3)', patch[:, 6:9, :, :], global_step)
+        log_images('Weight (3)', torch.unsqueeze(vis_weights[:, 2, :, :], dim=1), global_step)
+
+        if vis_weights.shape[1] == 4:
+            log_images('Input (4)', patch[:, 9:12, :, :], global_step)
+            log_images('Weight (4)', torch.unsqueeze(vis_weights[:, 3, :, :], dim=1), global_step)
+
+        if vis_weights.shape[1] == 5:
+            log_images('Input (4)', patch[:, 9:12, :, :], global_step)
+            log_images('Weight (4)', torch.unsqueeze(vis_weights[:, 3, :, :], dim=1), global_step)
+            log_images('Input (5)', patch[:, 12:, :, :], global_step)
+            log_images('Weight (5)', torch.unsqueeze(vis_weights[:, 4, :, :], dim=1), global_step)
+
+        # Log result and ground truth images
+        log_images('Result', result, global_step)
+        log_images('GT', gt_patch, global_step)
         
         pbar.update(np.ceil(img.shape[0]))
 
@@ -429,15 +459,22 @@ if __name__ == '__main__':
   net.to(device=device)
 
   wandb.init(project="wb-correction", config={
+        "model_name": args.model_name,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "learning_rate": args.lr,
+        "l2_reg_weight": args.l2reg,
+        "smooth_weight": args.smooth_weight,
+        "validation_freq": args.val_freq,
+        "grad_clipping": args.grad_clip_value,
+        "patch_per_image": args.patch_number,
         "patch_size": args.patch_size,
         "optimizer": args.optimizer,
         "smoothness_weight": args.smoothness_weight,
         "shuffle_order": args.shuffle_order,
         "wb_settings": args.wb_settings,
-        "model_name": args.model_name
+        "checkpoints": args.save_cp,
+        "device": args.deive.type
     })
 
   postfix = f'_p_{args.patch_size}'
