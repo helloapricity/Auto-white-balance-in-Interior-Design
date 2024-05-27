@@ -463,7 +463,7 @@ if __name__ == '__main__':
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "learning_rate": args.lr,
-        "l2_reg_weight": args.l2reg,
+        "l2_reg_weight": args.l2r,
         "smooth_weight": args.smooth_weight,
         "validation_freq": args.val_freq,
         "grad_clipping": args.grad_clip_value,
