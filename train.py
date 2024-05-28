@@ -24,6 +24,10 @@ wandb.login()
 from src import dataset
 from torch.utils.data import DataLoader
 
+# Define a helper function to log images
+def log_images(tag, images, step):
+    for i, img in enumerate(images):
+        wandb.log({f'{tag} {i + 1}': [wandb.Image(img)], 'global_step': step})
 
 def train_net(net, device, data_dir, val_dir=None, epochs=140,
               batch_size=32, lr=0.001, l2reg=0.00001, grad_clip_value=0,
@@ -218,10 +222,6 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
         wandb.log({'Rec Loss/train': py_rec_loss, 'global_step': global_step})
         wandb.log({'Smoothness Loss/train': py_smoothness_loss, 'global_step': global_step})
 
-        # Define a helper function to log images
-        def log_images(tag, images, step):
-            for i, img in enumerate(images):
-                wandb.log({f'{tag} {i + 1}': [wandb.Image(img)], 'global_step': step})
 
         # Log input images and weights
         log_images('Input (1)', patch[:, 0:3, :, :], global_step)
@@ -342,11 +342,33 @@ def validation(net, loader, writer, step):
       writer.add_images('Result [val]', result, step)
       writer.add_images('GT [val]', gt, step)
 
+    # Log input images and weights
+    log_images('Input (1)', img[:, 0:3, :, :], step)
+    log_images('Weight (1)', torch.unsqueeze(vis_weights[:, 0, :, :], dim=1), step)
+    log_images('Input (2)', img[:, 3:6, :, :], step)
+    log_images('Weight (2)', torch.unsqueeze(vis_weights[:, 1, :, :], dim=1), step)
+    log_images('Input (3)', img[:, 6:9, :, :], step)
+    log_images('Weight (3)', torch.unsqueeze(vis_weights[:, 2, :, :], dim=1), step)
+
+    if vis_weights.shape[1] == 4:
+        log_images('Input (4)', img[:, 9:12, :, :], step)
+        log_images('Weight (4)', torch.unsqueeze(vis_weights[:, 3, :, :], dim=1), step)
+
+    if vis_weights.shape[1] == 5:
+        log_images('Input (4)', img[:, 9:12, :, :], step)
+        log_images('Weight (4)', torch.unsqueeze(vis_weights[:, 3, :, :], dim=1), step)
+        log_images('Input (5)', img[:, 12:, :, :], step)
+        log_images('Weight (5)', torch.unsqueeze(vis_weights[:, 4, :, :], dim=1), step)
+    
+    # Log result and ground truth images
+    log_images('Result [val]', result, step)
+    log_images('GT [val]', gt, step)
+
   print(f'Validation loss (batch): {val_loss / len(loader)}')
   if writer is not None:
     writer.add_scalar('Validation Loss', val_loss / len(loader), step)
 
-  wandb.log({"validation_loss": val_loss / len(loader)})
+  wandb.log({"validation_loss": val_loss / len(loader), "step": step})
 
   net.train()
 
@@ -472,9 +494,8 @@ if __name__ == '__main__':
         "smoothness_weight": args.smoothness_weight,
         "shuffle_order": args.shuffle_order,
         "wb_settings": args.wb_settings,
-        "checkpoints": args.save_cp,
-        "device": args.deive.type
-    })
+        "model_name": args.model_name
+        })
 
   postfix = f'_p_{args.patch_size}'
 
