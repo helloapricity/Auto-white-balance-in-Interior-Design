@@ -20,14 +20,27 @@ except ImportError:
 
 import wandb
 wandb.login()
+import time
 
 from src import dataset
 from torch.utils.data import DataLoader
 
 # Define a helper function to log images
-def log_images(tag, images, step):
+def log_images(tag, images, step, max_retries=5):
     for i, img in enumerate(images):
-        wandb.log({f'{tag} {i + 1}': [wandb.Image(img)], 'global_step': step})
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                wandb.log({f'{tag} {i + 1}': wandb.Image(img), 'global_step': step})
+                break  # Exit loop if log is successful
+            except wandb.errors.Error as e:
+                if "rate limit exceeded" in str(e):
+                    retry_count += 1
+                    sleep_time = 2 ** retry_count  # Exponential backoff
+                    print(f"Rate limit exceeded, retrying in {sleep_time} seconds...")
+                    time.sleep(sleep_time)
+                else:
+                    raise e  # Reraise the exception if it's not rate limit related
 
 def train_net(net, device, data_dir, val_dir=None, epochs=140,
               batch_size=32, lr=0.001, l2reg=0.00001, grad_clip_value=0,
@@ -342,33 +355,34 @@ def validation(net, loader, writer, step):
       writer.add_images('Result [val]', result, step)
       writer.add_images('GT [val]', gt, step)
 
+    vis_weights = (weights - torch.min(weights)) / (ops.EPS + torch.max(weights) - torch.min(weights))
     # Log input images and weights
     log_images('Input (1)', img[:, 0:3, :, :], step)
-    log_images('Weight (1)', torch.unsqueeze(vis_weights[:, 0, :, :], dim=1), step)
+    log_images('Weight (1)', vis_weights[:, 0, :, :].unsqueeze(1), step)
     log_images('Input (2)', img[:, 3:6, :, :], step)
-    log_images('Weight (2)', torch.unsqueeze(vis_weights[:, 1, :, :], dim=1), step)
+    log_images('Weight (2)', vis_weights[:, 1, :, :].unsqueeze(1), step)
     log_images('Input (3)', img[:, 6:9, :, :], step)
-    log_images('Weight (3)', torch.unsqueeze(vis_weights[:, 2, :, :], dim=1), step)
+    log_images('Weight (3)', vis_weights[:, 2, :, :].unsqueeze(1), step)
 
     if vis_weights.shape[1] == 4:
         log_images('Input (4)', img[:, 9:12, :, :], step)
-        log_images('Weight (4)', torch.unsqueeze(vis_weights[:, 3, :, :], dim=1), step)
+        log_images('Weight (4)', vis_weights[:, 3, :, :].unsqueeze(1), step)
 
     if vis_weights.shape[1] == 5:
         log_images('Input (4)', img[:, 9:12, :, :], step)
-        log_images('Weight (4)', torch.unsqueeze(vis_weights[:, 3, :, :], dim=1), step)
+        log_images('Weight (4)', vis_weights[:, 3, :, :].unsqueeze(1), step)
         log_images('Input (5)', img[:, 12:, :, :], step)
-        log_images('Weight (5)', torch.unsqueeze(vis_weights[:, 4, :, :], dim=1), step)
+        log_images('Weight (5)', vis_weights[:, 4, :, :].unsqueeze(1), step)
     
     # Log result and ground truth images
     log_images('Result [val]', result, step)
     log_images('GT [val]', gt, step)
 
+    wandb.log({"validation_loss": val_loss / len(loader), "step": step})
+
   print(f'Validation loss (batch): {val_loss / len(loader)}')
   if writer is not None:
     writer.add_scalar('Validation Loss', val_loss / len(loader), step)
-
-  wandb.log({"validation_loss": val_loss / len(loader), "step": step})
 
   net.train()
 
