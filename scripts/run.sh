@@ -1,0 +1,1 @@
+python train.py --wb-settings T D S --model-name WB_model_Set1_new --batch-size 128 --epochs 20
