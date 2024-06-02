@@ -1,0 +1,7 @@
+torch==2.2.2
+torchaudio==0.17.2
+wandb
+requests
+tqdm
+scikit-learn
+matplotlib
