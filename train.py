@@ -11,6 +11,12 @@ import random
 from src import ops
 import torch.nn.functional as F
 
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
+import torch.distributed as dist
+from torch.distributed import init_process_group, destroy_process_group
+
 try:
   from torch.utils.tensorboard import SummaryWriter
 
@@ -19,11 +25,21 @@ except ImportError:
   use_tb = False
 
 import wandb
-wandb.login()
 import time
 
 from src import dataset
 from torch.utils.data import DataLoader
+
+def ddp_setup(rank, world_size):
+  """_summary_
+
+  Args:
+      rank (_type_): Unique indentifier of each process
+      world_size (_type_): Total number of processes
+  """
+  os.environ["MASTER_ADDR"] = "localhost"
+  os.environ["MASTER_PORT"] = "12355"
+  init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
 # Define a helper function to log images
 def log_images(tag, images, step, max_retries=5):
@@ -41,8 +57,8 @@ def log_images(tag, images, step, max_retries=5):
                     time.sleep(sleep_time)
                 else:
                     raise e  # Reraise the exception if it's not rate limit related
-
-def train_net(net, device, data_dir, val_dir=None, epochs=140,
+                  
+def train_net(rank, world_size, net, data_dir, val_dir=None, epochs=140,
               batch_size=32, lr=0.001, l2reg=0.00001, grad_clip_value=0,
               chkpoint_period=10, val_freq=1, smooth_weight=0.01,
               multiscale=False, wb_settings=None, shuffle_order=True,
@@ -51,7 +67,14 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
               save_cp=True):
   """ Trains a network and saves the trained model in harddisk.
   """
-
+  ddp_setup(rank, world_size)
+  torch.cuda.set_device(rank)
+  device = torch.device(f'cuda:{rank}')
+  # instantiate the model and move it to the right device
+  net = net.to(device)
+  # wrap the model with DDP
+  net = DDP(net, device_ids=[rank], output_device=rank, find_unused_parameters=True)
+  
   dir_checkpoint = 'checkpoints_model/'  # check points directory
 
 
@@ -87,15 +110,31 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
   val_set = dataset.Data(val_files, patch_size=patch_size, patch_number=1,
                          shuffle_order=shuffle_order, wb_settings=wb_settings)
 
-  train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                            num_workers=6, pin_memory=True)
+  train_sampler = DistributedSampler(train_set, num_replicas=world_size, rank=rank)
+  train_loader = DataLoader(train_set, batch_size=batch_size, sampler=train_sampler, num_workers=6, pin_memory=True)
 
-  val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True,
-                          num_workers=6, pin_memory=True)
+  val_sampler = DistributedSampler(val_set, num_replicas=world_size, rank=rank)
+  val_loader = DataLoader(val_set, batch_size=batch_size, sampler=val_sampler, num_workers=6, pin_memory=True)
 
-  # Initialization of other components
+  # Initialize W&B
+  wandb.init(project="wb-correction", config={
+      "model_name": model_name,
+      "epochs": epochs,
+      "batch_size": batch_size,
+      "learning_rate": lr,
+      "l2_reg_weight": l2reg,
+      "validation_freq": val_freq,
+      "grad_clipping": grad_clip_value,
+      "patch_per_image": patch_number,
+      "patch_size": patch_size,
+      "optimizer": optimizer_algo,
+      "smoothness_weight": smooth_weight,
+      "shuffle_order": shuffle_order,
+      "wb_settings": wb_settings,
+      "model_name": model_name
+  }, group="DDP")
   wandb.watch(net, log="all")
-  
+
   if use_tb:  # if TensorBoard is used
     writer = SummaryWriter(log_dir='runs/' + model_name,
                            comment=f'LR_{lr}_BS_{batch_size}')
@@ -222,10 +261,10 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
             writer.add_images('Weight (5)',
                               torch.unsqueeze(vis_weights[:, 4, :, :], dim=1),
                               global_step)
-        
+
           writer.add_images('Result', result, global_step)
           writer.add_images('GT', gt_patch, global_step)
-        
+
         # Normalize weights for visualization
         vis_weights = (weights - torch.min(weights)) / (
                       torch.finfo(weights.dtype).eps + torch.max(weights) - torch.min(weights))
@@ -267,6 +306,7 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
 
         global_step += 1
 
+    # Calculating epoch losses
     epoch_loss = epoch_loss / (len(train_loader))
     epoch_rec_loss = epoch_rec_loss / (len(train_loader))
     epoch_smoothness_loss = epoch_smoothness_loss / (len(train_loader))
@@ -274,16 +314,20 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
                  f'Rec. loss = {epoch_rec_loss}, '
                  f'Smoothness loss = {epoch_smoothness_loss}')
 
+    # Validation after each epoch
     if (epoch + 1) % val_freq == 0:
       logging.info('Validation...')
-      validation(net=net, loader=val_loader, writer=writer, step=global_step)
+      validation(net=net, loader=val_loader, writer=writer, step=global_step, device=device)
+    
+    # Synchronize all processes
+    dist.barrier()
 
     # save a checkpoint
-    if save_cp and (epoch + 1) % chkpoint_period == 0:
+    if rank == 0 and save_cp and (epoch + 1) % chkpoint_period == 0:
       if not os.path.exists(dir_checkpoint):
         os.mkdir(dir_checkpoint)
         logging.info('Created checkpoint directory')
-      torch.save(net.state_dict(), dir_checkpoint +
+      torch.save(net.module.state_dict(), dir_checkpoint +
                  f'{model_name}_{epoch + 1}.pth')
       logging.info(f'Checkpoint {epoch + 1} saved!')
 
@@ -292,16 +336,20 @@ def train_net(net, device, data_dir, val_dir=None, epochs=140,
     os.mkdir('models')
     logging.info('Created trained models directory')
 
-  torch.save(net.state_dict(), 'models/' + f'{model_name}.pth')
+  torch.save(net.module.state_dict(), 'models/' + f'{model_name}.pth')
   logging.info('Saved trained model!')
 
   if use_tb:
     writer.close()
 
   logging.info('End of training')
+  
+  # Finish W&B
+  wandb.finish()
+    
+  destroy_process_group()
 
-
-def validation(net, loader, writer, step):
+def validation(net, loader, writer, step, device):
   net.eval()
   index = random.randint(0, len(loader) - 1)
   val_loss = 0
@@ -355,6 +403,7 @@ def validation(net, loader, writer, step):
       writer.add_images('Result [val]', result, step)
       writer.add_images('GT [val]', gt, step)
 
+    wandb.log({"validation_loss": val_loss / len(loader), "step": step})
     vis_weights = (weights - torch.min(weights)) / (ops.EPS + torch.max(weights) - torch.min(weights))
     # Log input images and weights
     log_images('Input (1)', img[:, 0:3, :, :], step)
@@ -377,8 +426,6 @@ def validation(net, loader, writer, step):
     # Log result and ground truth images
     log_images('Result [val]', result, step)
     log_images('GT [val]', gt, step)
-
-    wandb.log({"validation_loss": val_loss / len(loader), "step": step})
 
   print(f'Validation loss (batch): {val_loss / len(loader)}')
   if writer is not None:
@@ -492,25 +539,6 @@ if __name__ == '__main__':
     )
     logging.info(f'Model loaded from {args.model_location}')
 
-  net.to(device=device)
-
-  wandb.init(project="wb-correction", config={
-        "model_name": args.model_name,
-        "epochs": args.epochs,
-        "batch_size": args.batch_size,
-        "learning_rate": args.lr,
-        "l2_reg_weight": args.l2r,
-        "validation_freq": args.val_freq,
-        "grad_clipping": args.grad_clip_value,
-        "patch_per_image": args.patch_number,
-        "patch_size": args.patch_size,
-        "optimizer": args.optimizer,
-        "smoothness_weight": args.smoothness_weight,
-        "shuffle_order": args.shuffle_order,
-        "wb_settings": args.wb_settings,
-        "model_name": args.model_name
-        })
-
   postfix = f'_p_{args.patch_size}'
 
   if args.norm:
@@ -527,31 +555,15 @@ if __name__ == '__main__':
 
   model_name = args.model_name + postfix
 
+  world_size = torch.cuda.device_count()
 
-  try:
-    train_net(net=net, device=device, data_dir=args.trdir,
-              patch_number=args.patch_number,
-              multiscale=args.multiscale,
-              smooth_weight=args.smoothness_weight,
-              max_tr_files=args.max_tr_files,
-              max_val_files=args.max_val_files,
-              wb_settings=args.wb_settings,
-              shuffle_order=args.shuffle_order,
-              epochs=args.epochs,
-              batch_size=args.batch_size, lr=args.lr,
-              l2reg=args.l2r,
-              optimizer_algo=args.optimizer,
-              grad_clip_value=args.grad_clip_value,
-              chkpoint_period=args.cp_freq,
-              val_freq=args.val_freq, patch_size=args.patch_size,
-              model_name=model_name)
-
-  except KeyboardInterrupt:
-    torch.save(net.state_dict(), 'wb_correction_intrrupted_check_point.pth')
-    logging.info('Saved interrupt checkpoint backup')
-    try:
-      sys.exit(0)
-    except SystemExit:
-      os._exit(0)
-  
-  wandb.finish()
+  mp.spawn(train_net,
+            args=(world_size, net, args.trdir, None, args.epochs, 
+                  args.batch_size, args.lr, args.l2r, args.grad_clip_value, 
+                  args.cp_freq, args.val_freq, args.smoothness_weight, 
+                  args.multiscale, args.wb_settings, args.shuffle_order, 
+                  args.patch_number, args.optimizer, args.max_tr_files,
+                  args.max_val_files, args.patch_size, model_name, True),
+            nprocs=world_size,
+            join=True
+            )
