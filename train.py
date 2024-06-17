@@ -28,6 +28,7 @@ import wandb
 import time
 
 from src import dataset
+from datasets import load_dataset
 from torch.utils.data import DataLoader
 
 def ddp_setup(rank, world_size):
@@ -81,12 +82,12 @@ def train_net(rank, world_size, net, data_dir, val_dir=None, epochs=140,
   SMOOTHNESS_WEIGHT = smooth_weight
 
 
-  input_files = dataset.Data.load_files(data_dir)
-  random.shuffle(input_files)
+  input_files = dataset.Data.load_folders(data_dir)
+  # random.shuffle(input_files)
 
   if val_dir is not None:
-    val_files = dataset.Data.load_files(val_dir)
-    random.shuffle(val_files)
+    val_files = dataset.Data.load_folders(val_dir)
+    # random.shuffle(val_files)
   else:
     val_ind = round(len(input_files) * 0.1)
     val_files = input_files[: val_ind]
@@ -100,15 +101,14 @@ def train_net(rank, world_size, net, data_dir, val_dir=None, epochs=140,
     if max_tr_files < len(input_files):
       input_files = input_files[:max_tr_files]
 
-  dataset.Data.assert_files(input_files, wb_settings=wb_settings)
-  dataset.Data.assert_files(val_files, wb_settings=wb_settings)
-
+  # dataset.Data.assert_files(input_files, wb_settings=wb_settings)
+  # dataset.Data.assert_files(val_files, wb_settings=wb_settings)
   train_set = dataset.Data(input_files, patch_size=patch_size,
                            patch_number=patch_number, multiscale=multiscale,
-                           shuffle_order=shuffle_order, wb_settings=wb_settings)
-
+                           shuffle_order=shuffle_order)
+  
   val_set = dataset.Data(val_files, patch_size=patch_size, patch_number=1,
-                         shuffle_order=shuffle_order, wb_settings=wb_settings)
+                         shuffle_order=shuffle_order)
 
   train_sampler = DistributedSampler(train_set, num_replicas=world_size, rank=rank)
   train_loader = DataLoader(train_set, batch_size=batch_size, sampler=train_sampler, num_workers=6, pin_memory=True)
@@ -485,7 +485,8 @@ def get_args():
                       type=float, default=100.0, help='smoothness weight')
 
   parser.add_argument('-wbs', '--wb-settings', dest='wb_settings', nargs='+',
-                      default=['D', 'S', 'T', 'F', 'C'])
+                      # default=['D', 'S', 'T', 'F', 'C'])
+                      default=['D', 'S', 'T'])
 
   parser.add_argument('-l', '--load', dest='load', type=bool, default=False,
                       help='Load model from a .pth file')
@@ -495,7 +496,7 @@ def get_args():
                       help='Shuffle order of WB')
 
   parser.add_argument('-ml', '--model-location', dest='model_location',
-                      default=None)
+                      default=None, help='Location of the pretrained model')
 
   parser.add_argument('-vf', '--validation-frequency', dest='val_freq',
                       type=int, default=1, help='Validation frequency.')
@@ -518,6 +519,7 @@ def get_args():
 
   parser.add_argument('-mn', '--model-name', dest='model_name', type=str,
                       default='WB_model', help='Model name')
+  
 
   return parser.parse_args()
 
@@ -557,8 +559,9 @@ if __name__ == '__main__':
 
   world_size = torch.cuda.device_count()
 
+  start_train = time.time()
   mp.spawn(train_net,
-            args=(world_size, net, args.trdir, None, args.epochs, 
+            args=(world_size, net, args.trdir, args.valdir, args.epochs, 
                   args.batch_size, args.lr, args.l2r, args.grad_clip_value, 
                   args.cp_freq, args.val_freq, args.smoothness_weight, 
                   args.multiscale, args.wb_settings, args.shuffle_order, 
@@ -567,3 +570,5 @@ if __name__ == '__main__':
             nprocs=world_size,
             join=True
             )
+  end_train = time.time()
+  logging.info(f"Training time: {end_train - start_train}")
