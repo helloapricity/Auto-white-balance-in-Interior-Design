@@ -88,9 +88,11 @@ class Data(Dataset):
     img2 = ops.imread(inp_file[1])
     img3 = ops.imread(inp_file[2])
     
+    base_name = ops.get_basename(inp_file[0]).split("/")[-1]
+        
     if self.mode == 'testing':
       t_size = self.t_size
-      full_size_img = img_1.copy()
+      full_size_img = img1.copy()
 
     if self.mode == 'training':
       t_size = self.t_size + 64 * 2 ** np.random.randint(5) if self.multiscale else self.t_size
@@ -107,9 +109,10 @@ class Data(Dataset):
           batched_imgs = ops.batch_aug(batched_imgs)
       
       batched_imgs = ops.batch_extract_path(batched_imgs, patch_size=self.patch_size, patch_number=self.patch_number)  # Total time extract modify:  0.1757 s
-      
+      print(batched_imgs.shape)
       # Total time convert modify: 0.0006
       label = torch.from_numpy(batched_imgs[:,0,:,:].copy()).permute(0, 3, 1, 2)
+      print(label.shape)
       inp_model = torch.from_numpy(batched_imgs[:,1:,:,:].copy())
       patch, num_inp, w, h, c = inp_model.shape
       inp_model = inp_model.reshape(patch, num_inp*c, w, h)
@@ -122,57 +125,57 @@ class Data(Dataset):
 
       if checks:
         if self.keep_aspect_ratio:
-          img_1 = ops.aspect_ratio_imresize(img_1, max_output=t_size)
+          img1 = ops.aspect_ratio_imresize(img1, max_output=t_size)
         else:
-          img_1 = ops.imresize.imresize(img_1, output_shape=(t_size, t_size))
+          img1 = ops.imresize.imresize(img1, output_shape=(t_size, t_size))
           
         if self.keep_aspect_ratio:
-          img_2 = ops.aspect_ratio_imresize(img_2, max_output=t_size)
+          img2 = ops.aspect_ratio_imresize(img2, max_output=t_size)
         else:
-          img_2 = ops.imresize.imresize(img_2, output_shape=(t_size, t_size))
-        mapping_2 = ops.get_mapping_func(img_1, img_2)
+          img2 = ops.imresize.imresize(img2, output_shape=(t_size, t_size))
+        mapping_2 = ops.get_mapping_func(img1, img2)
         full_size_2 = ops.apply_mapping_func(full_size_img, mapping_2)
         full_size_2 = ops.outOfGamutClipping(full_size_2)
 
         if self.keep_aspect_ratio:
-          img_3 = ops.aspect_ratio_imresize(img_3, max_output=t_size)
+          img3 = ops.aspect_ratio_imresize(img3, max_output=t_size)
         else:
-          img_3 = ops.imresize.imresize(img_3, output_shape=(t_size, t_size))
-        mapping_3 = ops.get_mapping_func(img_1, img_3)
+          img3 = ops.imresize.imresize(img3, output_shape=(t_size, t_size))
+        mapping_3 = ops.get_mapping_func(img1, img3)
         full_size_3 = ops.apply_mapping_func(full_size_img, mapping_3)
         full_size_3 = ops.outOfGamutClipping(full_size_3)
 
       else:
-        img_2, img_3 = deep_wb(img_1, task='editing', net_s=self.deepWB_S,
+        img2, img3 = deep_wb(img1, task='editing', net_s=self.deepWB_S,
                                net_t=self.deepWB_T, device='cuda')
         if self.keep_aspect_ratio:
-          img_1 = ops.aspect_ratio_imresize(img_1, max_output=t_size)
-          img_2 = ops.aspect_ratio_imresize(img_2, max_output=t_size)
-          img_3 = ops.aspect_ratio_imresize(img_3, max_output=t_size)
+          img1 = ops.aspect_ratio_imresize(img1, max_output=t_size)
+          img2 = ops.aspect_ratio_imresize(img2, max_output=t_size)
+          img3 = ops.aspect_ratio_imresize(img3, max_output=t_size)
         else:
-          img_1 = ops.imresize.imresize(img_1, output_shape=(t_size, t_size))
-          img_2 = ops.imresize.imresize(img_2, output_shape=(t_size, t_size))
-          img_3 = ops.imresize.imresize(img_3, output_shape=(t_size, t_size))
+          img1 = ops.imresize.imresize(img1, output_shape=(t_size, t_size))
+          img2 = ops.imresize.imresize(img2, output_shape=(t_size, t_size))
+          img3 = ops.imresize.imresize(img3, output_shape=(t_size, t_size))
 
-        mapping_2 = ops.get_mapping_func(img_1, img_2)
-        mapping_3 = ops.get_mapping_func(img_1, img_3)
+        mapping_2 = ops.get_mapping_func(img1, img2)
+        mapping_3 = ops.get_mapping_func(img1, img3)
         full_size_2 = ops.apply_mapping_func(full_size_img, mapping_2)
         full_size_2 = ops.outOfGamutClipping(full_size_2)
         full_size_3 = ops.apply_mapping_func(full_size_img, mapping_3)
         full_size_3 = ops.outOfGamutClipping(full_size_3)
 
-      img_1 = ops.to_tensor(img_1, dims=3)
-      img_2 = ops.to_tensor(img_2, dims=3)
-      img_3 = ops.to_tensor(img_3, dims=3)
+      img1 = ops.to_tensor(img1, dims=3)
+      img2 = ops.to_tensor(img2, dims=3)
+      img3 = ops.to_tensor(img3, dims=3)
 
-      img = torch.cat((img_1, img_2, img_3), dim=0)
+      img = torch.cat((img1, img2, img3), dim=0)
 
       full_size_img = ops.to_tensor(full_size_img, dims=3)
       full_size_2 = ops.to_tensor(full_size_2, dims=3)
       full_size_3 = ops.to_tensor(full_size_3, dims=3)
       
       return {'image': img, 'fs_d_img': full_size_img, 'fs_s_img':
-          full_size_2, 'fs_t_img': full_size_3}
+          full_size_2, 'fs_t_img': full_size_3, 'filename': base_name}
 
   def check_img_folder(self, folder_path):
     
