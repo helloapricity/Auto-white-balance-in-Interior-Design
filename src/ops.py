@@ -23,7 +23,23 @@ def get_sobel_kernel(device, chnls=5):
 def compute_loss(source, target):
   return mse(source, target)
 
-
+def batch_aug(image: np.array):
+  aug_op = np.random.randint(4)
+    
+  if aug_op == 1:
+    image = np.flipud(image)
+  elif aug_op == 2:
+    image = np.fliplr(image)
+  elif aug_op == 3:
+    scale = np.random.uniform(low=0.75, high=1.25)
+    
+    result = []
+    for i in range(image.shape[0]):
+      result.append(imresize.imresize(image[i,:], scalar_scale=scale))
+    image = np.stack(result, axis=0).squeeze()
+    
+  return image
+  
 def aug(img1, img2, img3, img4, img5=None, img6=None):
   if img5 is not None and img6 is not None:
     assert (img1.shape == img2.shape == img3.shape == img4.shape ==
@@ -34,13 +50,15 @@ def aug(img1, img2, img3, img4, img5=None, img6=None):
   else:
     assert img1.shape == img2.shape == img3.shape == img4.shape
   aug_op = np.random.randint(4)
+  
   if aug_op == 3:
     scale = np.random.uniform(low=0.75, high=1.25)
   else:
     scale = 1
 
   h, w, _ = img1.shape
-  if aug_op is 1:
+  
+  if aug_op == 1:
     img1 = np.flipud(img1)
     img2 = np.flipud(img2)
     img3 = np.flipud(img3)
@@ -49,7 +67,7 @@ def aug(img1, img2, img3, img4, img5=None, img6=None):
       img5 = np.flipud(img5)
     if img6 is not None:
       img6 = np.flipud(img6)
-  elif aug_op is 2:
+  elif aug_op == 2:
     img1 = np.fliplr(img1)
     img2 = np.fliplr(img2)
     img3 = np.fliplr(img3)
@@ -58,7 +76,7 @@ def aug(img1, img2, img3, img4, img5=None, img6=None):
       img5 = np.fliplr(img5)
     if img6 is not None:
       img6 = np.fliplr(img6)
-  elif aug_op is 3:
+  elif aug_op == 3:
     img1 = imresize.imresize(img1, scalar_scale=scale)
     img2 = imresize.imresize(img2, scalar_scale=scale)
     img3 = imresize.imresize(img3, scalar_scale=scale)
@@ -74,6 +92,32 @@ def aug(img1, img2, img3, img4, img5=None, img6=None):
   else:
     return img1, img2, img3, img4
 
+
+def batch_extract_path(image:np.array, patch_size:int=256, patch_number:int=8):
+  _, h, w, _ = image.shape
+  
+  for patch in range(patch_number):
+    patch_x = np.random.randint(0, high=w-patch_size)
+    patch_y = np.random.randint(0, high=h-patch_size)
+    
+    if patch == 0:
+      _patch = np.expand_dims(image[:,
+                     patch_y:patch_y + patch_size, 
+                     patch_x:patch_x + patch_size, 
+                     :], axis=0) # [patch, bz, w, h, c]
+    else:
+      _patch = np.concatenate((
+        _patch,
+        np.expand_dims(image[:,
+                             patch_y:patch_y + patch_size,
+                             patch_x:patch_x + patch_size,
+                             :], axis=0)),
+        axis=0
+      )
+      
+  return _patch
+    
+    
 
 def extract_patch(img1, img2, img3, img4, img5=None, img6=None,
                   patch_size=256, patch_number=8):
@@ -91,6 +135,7 @@ def extract_patch(img1, img2, img3, img4, img5=None, img6=None,
   for patch in range(patch_number):
     patch_x = np.random.randint(0, high=w - patch_size)
     patch_y = np.random.randint(0, high=h - patch_size)
+  
     if patch == 0:
       patch1 = np.expand_dims(img1[patch_y:patch_y + patch_size,
                               patch_x:patch_x + patch_size, :], axis=0)
@@ -137,7 +182,7 @@ def extract_patch(img1, img2, img3, img4, img5=None, img6=None,
         patch6 = np.concatenate((patch6, np.expand_dims(
           img6[patch_y:patch_y + patch_size,
           patch_x:patch_x + patch_size, :], axis=0)), axis=0)
-
+  
   if img5 is not None and img6 is not None:
     return patch1, patch2, patch3, patch4, patch5, patch6
   elif img5 is not None:
@@ -239,7 +284,7 @@ def to_tensor(im, dims=3):
 def get_basename(filename):
   parts = filename.split('_')
   base_name = ''
-  for i in range(len(parts) - 2):
+  for i in range(len(parts) - 1):
     base_name = base_name + parts[i] + '_'
 
   return base_name
