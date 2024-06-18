@@ -20,18 +20,18 @@ def test_net(net, device, data_dir, model_name, out_dir, save_weights,
   """
   if wb_settings is None:
     wb_settings = ['D', 'S', 'T', 'F', 'C']
-  input_files = dataset.Data.load_files(data_dir)
+  input_folders = dataset.Data.load_folders(data_dir)
 
-  if input_files == []:
-    input_files = dataset.Data.load_files(data_dir, mode='testing')
+  if input_folders == []:
+    input_folders = dataset.Data.load_folders(data_dir, mode='testing')
 
   if multi_scale:
-    test_set = dataset.Data(input_files, mode='testing', t_size=t_size,
-                            wb_settings=wb_settings,
+    test_set = dataset.Data(input_folders, mode='testing', t_size=t_size,
+                            # wb_settings=wb_settings,
                             keep_aspect_ratio=keep_aspect_ratio)
   else:
-    test_set = dataset.Data(input_files, mode='testing', t_size=t_size,
-                            wb_settings=wb_settings,
+    test_set = dataset.Data(input_folders, mode='testing', t_size=t_size,
+                            # wb_settings=wb_settings,
                             keep_aspect_ratio=keep_aspect_ratio)
 
   test_set = DataLoader(test_set, batch_size=batch_size, shuffle=False,
