@@ -1,5 +1,7 @@
-torch==2.2.2
-torchaudio==0.17.2
+torch==2.3.0
+torchvision==0.18.0
+torchaudio==2.3.0
+numpy==1.26.4
 wandb
 requests
 tqdm
