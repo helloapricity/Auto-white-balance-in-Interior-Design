@@ -1,0 +1,13 @@
+torch==2.3.0
+torchvision==0.18.0
+torchaudio==2.3.0
+numpy==1.26.4
+wandb
+requests
+tqdm
+scikit-learn
+matplotlib
+torch==2.2.0
+torchvision==0.17.0
+torchmetrics
+lightning

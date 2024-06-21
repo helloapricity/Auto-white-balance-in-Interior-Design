@@ -1,29 +1,24 @@
-__author__ = "Mahmoud Afifi"
-__credits__ = ["Mahmoud Afifi"]
-
-
 import torch.nn as nn
 import torch
-from src import gridnet
+
+from models.gridnet import GridNet
 
 
 
-
-class WBnet(nn.Module):
+class WBNet(nn.Module):
   def __init__(self, inchnls=9, initialchnls=8, rows=4, columns=6,
-               norm=False, device='cuda'):
+              norm=False):
     """ Network constructor.
     """
     self.outchnls = int(inchnls/3)
     self.inchnls = inchnls
-    self.device = device
-    super(WBnet, self).__init__()
+    super(WBNet, self).__init__()
     assert columns % 2 == 0, 'use even number of columns'
     assert columns > 1, 'use number of columns > 1'
     assert rows > 1, 'use number of rows > 1'
-    self.net = gridnet.network(inchnls=self.inchnls, outchnls=self.outchnls,
-                       initialchnls=initialchnls, rows=rows, columns=columns,
-                       norm=norm, device=self.device)
+    self.net = GridNet(inchnls=self.inchnls, outchnls=self.outchnls,
+                      initialchnls=initialchnls, rows=rows, columns=columns,
+                      norm=norm)
     self.softmax = nn.Softmax(dim=1)
 
   def forward(self, x):

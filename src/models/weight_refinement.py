@@ -4,7 +4,7 @@ import bilateral_solver.bilateral_grid as bilateral_grid
 import bilateral_solver.bilateral_solver as solver
 import numpy as np
 import torch
-from src import ops
+from src.utils import ops
 
 sns.set_style('white')
 sns.set_context('notebook')
