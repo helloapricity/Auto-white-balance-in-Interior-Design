@@ -13,7 +13,7 @@ from models.wb_net import WBNet
 from data.dataset import setup_dataset
 from arguments import get_args
 from utils.ops import get_sobel_kernel
-
+from lightning.pytorch.loggers import WandbLogger
 
 logger = logging.getLogger("__name__")
 
@@ -79,7 +79,7 @@ class LitAWB(LightningModule):
         self.mean_valid_loss.update(val_loss, weight=inputs.shape[0])
     
     def on_validation_epoch_end(self):
-        self.log("val/loss", self.mean_valid_loss, prog_bar=True, sync_dist=self.sync_dist)
+        self.log("val/loss", self.mean_valid_loss, prog_bar=True, sync_dist=self.sync_dist, logger=True)
         
     def configure_optimizers(self):
         # self.hparams available because we called self.save_hyperparameters()
@@ -95,6 +95,8 @@ class LitAWB(LightningModule):
 
 def main(args):
     
+    wandb_logger = WandbLogger(project=args.project_name, log_model="all")
+
     # load model
     wb_model = WBNet(
         norm=args.norm, 
@@ -102,9 +104,7 @@ def main(args):
     )
     
     dist = True if len(args.device) > 1 else False
-    
-    print("\nDebug: ", dist, "\n")
-    
+        
     x_kernel, y_kernel = get_sobel_kernel(chnls=len(args.wb_settings))
     litmodel = LitAWB(model= wb_model, lr=args.lr, smooth_weight=args.smoothness_weight,
                     x_kernel=x_kernel, y_kernel=y_kernel, dist=dist)
@@ -124,14 +124,14 @@ def main(args):
             num_workers=args.num_workers
         )
     
-    if args.do_test:
+    if args.do_eval:
         test_dataloader = setup_dataset(
             imgfolders=args.valdir,
             batch_size=args.batch_size * 2,
             patch_size=args.patch_size,
             patch_number=1,
             aug=False,
-            mode='testing',
+            mode='validation',
             multiscale=False,
             keep_aspect_ratio=False,
             t_size=args.img_size,
@@ -153,7 +153,8 @@ def main(args):
         devices=args.device, 
         callbacks=[model_checkpoint], 
         strategy='fsdp' if dist else 'auto',
-        log_every_n_steps=20,
+        log_every_n_steps=1,
+        logger=wandb_logger
     )
     
     if args.do_train:
@@ -178,9 +179,7 @@ def main(args):
         
 if __name__ == '__main__':
     opt = get_args()
-    
-    print("\nHyperparameters\n", opt, "\n")
-    
+        
     # trainer
     logger.info('*** Start Training mode ***')
     main(opt)

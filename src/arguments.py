@@ -9,6 +9,7 @@ def get_args():
     """
 
     parser = argparse.ArgumentParser(description='Train WB Correction.')
+    parser.add_argument('--project-name', dest='project_name', type=str, default="CWCC_WB")
     parser.add_argument('--do-train', action='store_true', help='Do training')
     parser.add_argument('-trd', '--training-dir', default='./data/images/', type=str,
                         help='Training directory')
