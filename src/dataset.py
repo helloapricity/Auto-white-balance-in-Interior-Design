@@ -109,11 +109,18 @@ class Data(Dataset):
           batched_imgs = ops.batch_aug(batched_imgs)
       
       batched_imgs = ops.batch_extract_path(batched_imgs, patch_size=self.patch_size, patch_number=self.patch_number)  # Total time extract modify:  0.1757 s
-      print(batched_imgs.shape)
       # Total time convert modify: 0.0006
+      # label = torch.from_numpy(batched_imgs[:,0,:,:].copy()).permute(0, 3, 1, 2)
+      # inp_model = torch.from_numpy(batched_imgs[:,1:,:,:].copy())
+      
+      label = batched_imgs[:,0,:,:]
+      inp_model = batched_imgs[:,1:,:,:]
+      
       label = torch.from_numpy(batched_imgs[:,0,:,:].copy()).permute(0, 3, 1, 2)
-      print(label.shape)
       inp_model = torch.from_numpy(batched_imgs[:,1:,:,:].copy())
+      
+      del batched_imgs
+      
       patch, num_inp, w, h, c = inp_model.shape
       inp_model = inp_model.reshape(patch, num_inp*c, w, h)
       
