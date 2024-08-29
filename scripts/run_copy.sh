@@ -1,0 +1,17 @@
+python src/trainer_copy.py \
+    --wb-settings D S T \
+    --model-name WB_model_style_loss_1 \
+    --output_path "output" \
+    --do-train \
+    --training-dir datahub/3_img/train \
+    --do-eval \
+    --validation-dir datahub/3_img/test \
+    --epochs 100 \
+    --batch-size 32 \
+    --grad_acc 2 \
+    --patch-size 64 \
+    --patch-number 32 \
+    --device 0 \
+    --lr 1e-4 \
+    --aug \
+    --num-workers 9

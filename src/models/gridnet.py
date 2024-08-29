@@ -7,14 +7,11 @@
      In BMVC, 2017.
    Ref. 2: Context-aware Synthesis for Video Frame Interpolation, In CVPR 2018.
 """
-
-__author__ = "Mahmoud Afifi"
-__credits__ = ["Mahmoud Afifi"]
-
-
 import torch.nn as nn
 
-class network(nn.Module):
+
+
+class GridNet(nn.Module):
   def __init__(self, inchnls=3, outchnls=3, initialchnls=16, rows=3,
                columns=6, norm=False, device='cuda'):
     """ GridNet constructor.
@@ -28,13 +25,13 @@ class network(nn.Module):
       norm: apply batch norm as used in Ref. 1; default is False (i.e., Ref. 2)
     """
 
-    super(network, self).__init__()
+    super(GridNet, self).__init__()
     assert columns % 2 == 0, 'use even number of columns'
     assert columns > 1, 'use number of columns > 1'
     assert rows > 1, 'use number of rows > 1'
 
     self.device = device
-
+    
     self.encoder = nn.ModuleList([])
     self.decoder = nn.ModuleList([])
     self.rows = rows
@@ -48,24 +45,21 @@ class network(nn.Module):
         if r == 0:
           if c == 0:
             res_blocks.append(ForwardBlock(in_dim=inchnls,
-                                            out_dim=initialchnls,
-                                            norm=norm).to(device=self.device))
+                                          out_dim=initialchnls,
+                                          norm=norm).to(device=self.device))
           else:
-            res_blocks.append(ResidualBlock(in_dim=initialchnls, norm=norm).to(
-              device=self.device))
+            res_blocks.append(ResidualBlock(in_dim=initialchnls, norm=norm).to(device=self.device))
           down_blocks.append(SubsamplingBlock(
             in_dim=initialchnls, norm=norm).to(device=self.device))
         else:
           if c > 0:
             res_blocks.append(ResidualBlock(
-              in_dim=initialchnls * (2 ** r), norm=norm).to(
-              device=self.device))
+              in_dim=initialchnls * (2 ** r), norm=norm).to(device=self.device))
           else:
             res_blocks.append(nn.ModuleList([]))
           if r < (rows - 1):
             down_blocks.append(SubsamplingBlock(
-              in_dim=initialchnls * (2 ** r), norm=norm).to(
-              device=self.device))
+              in_dim=initialchnls * (2 ** r), norm=norm).to(device=self.device))
           else:
             down_blocks.append(nn.ModuleList([]))
 
@@ -84,11 +78,9 @@ class network(nn.Module):
           up_blocks.append(nn.ModuleList([]))
         elif r > 0:
           res_blocks.append(ResidualBlock(
-              in_dim=initialchnls * (2 ** r), norm=norm).to(
-            device=self.device))
+              in_dim=initialchnls * (2 ** r), norm=norm).to(device=self.device))
           up_blocks.append(UpsamplingBlock(
-            in_dim=initialchnls * (2 ** r), norm=norm).to(
-            device=self.device))
+            in_dim=initialchnls * (2 ** r), norm=norm).to(device=self.device))
 
       self.decoder.append(res_blocks)
       self.decoder.append(up_blocks)

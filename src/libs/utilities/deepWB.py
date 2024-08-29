@@ -10,8 +10,8 @@ __credits__ = ["Mahmoud Afifi"]
 import numpy as np
 import torch
 from torchvision import transforms
-import DeepWB.utilities.utils as utls
-from src import imresize
+import libs.utilities.utils as utls
+from utils import imresize
 
 
 def deep_wb(image, task='all', net_awb=None, net_t=None, net_s=None,
