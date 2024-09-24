@@ -9,7 +9,7 @@ from data.dataset import setup_dataset
 import torch.nn.functional as F
 from models import weight_refinement as weight_refinement
 from arguments import get_args
-from trainer import LitAWB
+from src.trainer_v1 import LitAWB
 from utils.ops import get_sobel_kernel
 
 def test_net(net, device, data_dir, model_name, out_dir, save_weights,
