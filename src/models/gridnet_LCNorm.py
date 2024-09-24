@@ -8,10 +8,11 @@
    Ref. 2: Context-aware Synthesis for Video Frame Interpolation, In CVPR 2018.
 """
 import torch.nn as nn
+from utils.local_context_norm import LocalContextNorm
 
 class GridNet(nn.Module):
   def __init__(self, inchnls=3, outchnls=3, initialchnls=16, rows=3,
-               columns=6, norm=False, device='cuda'):
+               columns=6, norm=True, device='cuda'):
     """ GridNet constructor.
 
     Args:
@@ -152,15 +153,15 @@ class GridNet(nn.Module):
 class SubsamplingBlock(nn.Module):
   """ SubsamplingBlock"""
 
-  def __init__(self, in_dim, norm=False):
+  def __init__(self, in_dim, norm=True):
     super(SubsamplingBlock, self).__init__()
     self.output = None
     if norm:
       self.block = nn.Sequential(
-        nn.BatchNorm2d(in_dim),
+        LocalContextNorm(in_dim),
         nn.PReLU(init=0.25),
         nn.Conv2d(in_dim, int(in_dim * 2), kernel_size=3, padding=1, stride=2),
-        nn.BatchNorm2d(int(in_dim * 2)),
+        LocalContextNorm(int(in_dim * 2)),
         nn.ReLU(inplace=True),
         nn.Conv2d(int(in_dim * 2), int(in_dim * 2), kernel_size=3, padding=1))
     else:
@@ -177,16 +178,16 @@ class SubsamplingBlock(nn.Module):
 class UpsamplingBlock(nn.Module):
   """ UpsamplingBlock"""
 
-  def __init__(self, in_dim, norm=False):
+  def __init__(self, in_dim, norm=True):
     super(UpsamplingBlock, self).__init__()
     self.output = None
     if norm:
       self.block = nn.Sequential(
         nn.Upsample(scale_factor=2.0, mode='bilinear', align_corners=True),
-        nn.BatchNorm2d(in_dim),
+        LocalContextNorm(in_dim),
         nn.PReLU(init=0.25),
         nn.Conv2d(in_dim, int(in_dim / 2), kernel_size=3, padding=1),
-        nn.BatchNorm2d(int(in_dim / 2)),
+        LocalContextNorm(int(in_dim / 2)),
         nn.ReLU(inplace=True),
         nn.Conv2d(int(in_dim / 2), int(in_dim / 2), kernel_size=3, padding=1))
     else:
@@ -204,7 +205,7 @@ class UpsamplingBlock(nn.Module):
 class ResidualBlock(nn.Module):
   """ ResidualBlock"""
 
-  def __init__(self, in_dim, out_dim=None, norm=False):
+  def __init__(self, in_dim, out_dim=None, norm=True):
     super(ResidualBlock, self).__init__()
     self.output = None
     intermediate_dim = int(in_dim * 2)
@@ -212,10 +213,10 @@ class ResidualBlock(nn.Module):
       out_dim = in_dim
     if norm:
       self.block = nn.Sequential(
-        nn.BatchNorm2d(in_dim),
+        LocalContextNorm(in_dim),
         nn.PReLU(init=0.25),
         nn.Conv2d(in_dim, intermediate_dim, kernel_size=3, padding=1),
-        nn.BatchNorm2d(intermediate_dim),
+        LocalContextNorm(intermediate_dim),
         nn.PReLU(init=0.25),
         nn.Conv2d(intermediate_dim, out_dim, kernel_size=3, padding=1))
     else:
@@ -233,7 +234,7 @@ class ResidualBlock(nn.Module):
 class ForwardBlock(nn.Module):
   """ ForwardBlock"""
 
-  def __init__(self, in_dim, out_dim=None, norm=False):
+  def __init__(self, in_dim, out_dim=None, norm=True):
     super(ForwardBlock, self).__init__()
     self.output = None
     intermediate_dim = int(in_dim * 2)
@@ -241,10 +242,10 @@ class ForwardBlock(nn.Module):
       out_dim = in_dim
     if norm:
       self.block = nn.Sequential(
-        nn.BatchNorm2d(in_dim),
+        LocalContextNorm(in_dim),
         nn.PReLU(init=0.25),
         nn.Conv2d(in_dim, intermediate_dim, kernel_size=3, padding=1),
-        nn.BatchNorm2d(intermediate_dim),
+        LocalContextNorm(intermediate_dim),
         nn.PReLU(init=0.25),
         nn.Conv2d(intermediate_dim, out_dim, kernel_size=3, padding=1))
     else:

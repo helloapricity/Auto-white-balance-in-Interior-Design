@@ -1,13 +1,13 @@
 import torch.nn as nn
 import torch
 
-from models.gridnet import GridNet
+from models.gridnet_LCNorm import GridNet
 
 # norm = False
 
 class WBNet(nn.Module):
   def __init__(self, inchnls=9, initialchnls=8, rows=4, columns=6,
-              norm=False, device='cuda'):
+              norm=True, device='cuda'):
     """ Network constructor.
     """
     self.outchnls = int(inchnls/3)

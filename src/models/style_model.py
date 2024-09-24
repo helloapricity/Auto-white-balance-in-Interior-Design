@@ -1,52 +1,41 @@
-import timm
 import torch
-import torch.nn as nn
+from torchvision import models
+from torchvision.models._utils import IntermediateLayerGetter
+from collections import namedtuple
 
-class StyleModel(nn.Module):
-    def __init__(self, freeze=True):  # Thêm tham số 'freeze' để quyết định có đóng băng tham số hay không
-        super(StyleModel, self).__init__()
-        self.encode = timm.create_model('vgg16', pretrained=True)
+class StyleModel(torch.nn.Module):
+    def __init__(self, requires_grad=False, show_progress=False):
+        super().__init__()
+        vgg_pretrained_features = models.vgg16(pretrained=True, progress=show_progress).features
         
-        # Initialize layers using nn.ModuleList
-        self.layers = nn.ModuleList(self.create_layers())
+        return_layers = {
+            '3': 'relu1_2',     # Corresponds to relu1_2
+            '8': 'relu2_2',     # Corresponds to relu2_2
+            '15': 'relu3_3',    # Corresponds to relu3_3
+            '22': 'relu4_3'     # Corresponds to relu4_3
+        }
         
-        # print(f"StyleModel initialized with freeze={freeze}")
-        
-        if freeze:
-            # Đóng băng các tham số của mô hình
-            for param in self.encode.parameters():
+        self.model = IntermediateLayerGetter(vgg_pretrained_features, return_layers=return_layers)
+        self.layer_names = ['relu1_2', 'relu2_2', 'relu3_3', 'relu4_3']
+        self.content_feature_maps_index = 1  # relu2_2
+        self.style_feature_maps_indices = list(range(len(self.layer_names)))  # all layers used for style representation
+
+        if not requires_grad:
+            for param in self.model.parameters():
                 param.requires_grad = False
-        
-
-    def create_layers(self):
-        # Extract the children layers of the model
-        children = list(self.encode.children())[0]
-
-        # Store layers in a list
-        layers = []
-        start = 0
-        # 2, 7, 14, 21
-        for end in [2, 7, 14, 21]:
-            layers.append(nn.Sequential(*children[start:end]))
-            start = end
-        return layers
 
     def forward(self, x):
-        x = x.to(next(self.parameters()).device)
-        
-        if x.dim() == 5:
-            x = x.view(-1, *x.shape[-3:])  # Reshape to [batch_size, channels, height, width]
-
-        outputs = []
-        for layer in self.layers:
-            x = layer(x)
-            # print(x.shape)
-            outputs.append(x)
-        return outputs
+        out = self.model(x)
+        vgg_outputs = namedtuple("VggOutputs", self.layer_names)
+        # print(out['relu1_2'].shape)
+        # print(out['relu2_2'].shape)
+        # print(out['relu3_3'].shape)
+        # print(out['relu4_3'].shape)
+        out = vgg_outputs(out['relu1_2'], out['relu2_2'], out['relu3_3'], out['relu4_3'])
+        return out
 
 # if __name__ == '__main__':
 #     IMG_SIZE = 224
 #     img = torch.randn(1, 3, IMG_SIZE, IMG_SIZE)
-#     model = StyleModel(freeze=True)  # Tạo mô hình và đóng băng các tham số
+#     model = StyleModel()  
 #     param = model(img)
-#     print(len(param))
